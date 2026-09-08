@@ -83,7 +83,14 @@ Social:
 
 ## Local Development
 
-### 1. Backend Setup
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/mounts10-wq/My-Hobby-Board.git
+cd My-Hobby-Board
+```
+
+### 2. Backend Setup
 
 ```bash
 cd server
@@ -101,7 +108,7 @@ python3 run.py
 
 Runs at: `http://127.0.0.1:5000`
 
-### 2. Frontend Setup
+### 3. Frontend Setup
 
 Open a second terminal:
 
@@ -114,7 +121,7 @@ npm run dev
 
 Runs at: `http://127.0.0.1:5173`
 
-### 3. Running Verification Tests
+### 4. Running Verification Tests
 
 Backend tests:
 ```bash
