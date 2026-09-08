@@ -1,0 +1,36 @@
+# Python & Virtual Environments
+venv/
+server/venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment Variables
+.env
+server/.env
+client/.env
+
+# Local Database & Uploads
+instance/
+server/instance/
+server/instance/*.db
+server/instance/uploads/
+server/instance/backups/
+*.db
+*.sqlite
+
+# Node & Frontend Build
+node_modules/
+client/node_modules/
+dist/
+client/dist/
+.npm/
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
