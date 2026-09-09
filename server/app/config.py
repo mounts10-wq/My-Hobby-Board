@@ -1,6 +1,7 @@
 import os
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -20,6 +21,14 @@ def get_database_uri():
     # Handle Postgres URL scheme fix commonly provided by Render/Neon/Heroku
     if configured_uri.startswith("postgres://"):
         configured_uri = configured_uri.replace("postgres://", "postgresql://", 1)
+
+    if configured_uri.startswith("postgresql://"):
+        # Neon requires SSL; enforce it even if the copied connection string omits it.
+        parsed = urlparse(configured_uri)
+        query = parse_qs(parsed.query)
+        if "sslmode" not in query:
+            query["sslmode"] = ["require"]
+            configured_uri = urlunparse(parsed._replace(query=urlencode(query, doseq=True)))
 
     if configured_uri.startswith("sqlite:///") and not configured_uri.startswith("sqlite:////"):
         rel_str = configured_uri[len("sqlite:///"):]
