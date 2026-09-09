@@ -35,7 +35,7 @@ function Home() {
               <span className="hero-panel-label">Featured board</span>
               <span className="hero-panel-badge">14 updates</span>
             </div>
-            <h2>Workshop rebuild: vintage radio in milestones</h2>
+            <h2>Restoring a vintage radio, one milestone at a time</h2>
             <p>
               Keep planning notes, task progress, and update history together so the
               project story stays visible from start to finish.
