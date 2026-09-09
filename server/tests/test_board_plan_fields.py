@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app import create_app, db
+from app import create_app, db, limiter
 from app.models import Board, User
 
 
@@ -17,6 +17,7 @@ def client():
         SQLALCHEMY_DATABASE_URI="sqlite:///:memory:",
         JWT_SECRET_KEY="test-jwt-secret-key-at-least-32-bytes",
     )
+    limiter.reset()
 
     with app.app_context():
         db.create_all()

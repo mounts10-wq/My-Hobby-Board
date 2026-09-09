@@ -54,6 +54,21 @@ export function AuthProvider({ children }) {
     checkCurrentUser();
   }, []);
 
+  function logout() {
+    localStorage.removeItem("token");
+    localStorage.removeItem(USER_STORAGE_KEY);
+    setUser(null);
+  }
+
+  useEffect(() => {
+    function handleExpiredSession() {
+      logout();
+    }
+
+    window.addEventListener("auth:expired", handleExpiredSession);
+    return () => window.removeEventListener("auth:expired", handleExpiredSession);
+  }, []);
+
   async function signup(formData) {
     const data = await apiRequest("/signup", {
       method: "POST",
@@ -78,12 +93,6 @@ export function AuthProvider({ children }) {
     setUser(data.user);
 
     return data;
-  }
-
-  function logout() {
-    localStorage.removeItem("token");
-    localStorage.removeItem(USER_STORAGE_KEY);
-    setUser(null);
   }
 
   return (

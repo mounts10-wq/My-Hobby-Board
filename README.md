@@ -6,10 +6,10 @@ MyHobbyBoard is a full-stack web application built for hobbyists, makers, and bu
 
 ## Features
 
-- **Authentication & Security:** JWT authentication with password hashing, secure token storage, and ownership-based authorization.
+- **Authentication & Security:** JWT authentication with password hashing (minimum 8-character passwords), secure token storage, ownership-based authorization, and rate limiting on auth and AI endpoints.
 - **Project & Task Management:** Full CRUD project workspaces with material checklists, notes, status tracking, and priority tagging.
 - **Progress Tracking & Visuals:** Live dashboard analytics, milestone updates with photo and video uploads.
-- **AI Planning Assistant:** Intelligent project milestone and prep recommendations powered by Google Gemini (with resilient built-in fallbacks).
+- **AI Planning Assistant:** Intelligent project milestone and prep recommendations powered by Google Gemini (with resilient built-in fallbacks), gated behind login and rate-limited to prevent abuse.
 - **Social Discovery & Follows:** Public project discovery, granular board-level follows, milestone feeds, and update comments.
 - **Production Architecture:** Decoupled React frontend and Flask backend, persistent Postgres database, and cloud media storage so user data survives every deploy.
 
@@ -28,6 +28,7 @@ Backend:
 - Flask-SQLAlchemy + Neon (serverless Postgres, production) / SQLite (local dev)
 - Flask-Migrate & Alembic
 - Flask-JWT-Extended
+- Flask-Limiter (rate limiting on signup, login, and the AI assistant)
 - Flask-CORS
 - Hosted on Render (Web Service)
 

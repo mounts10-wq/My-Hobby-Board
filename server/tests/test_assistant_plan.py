@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app import create_app, db
+from app import create_app, db, limiter
 from app.routes import parse_suggestions_from_ai_text
 
 
@@ -17,6 +17,7 @@ def client():
         SQLALCHEMY_DATABASE_URI="sqlite:///:memory:",
         JWT_SECRET_KEY="test-jwt-secret-key-at-least-32-bytes",
     )
+    limiter.reset()
 
     with app.app_context():
         db.create_all()
@@ -26,8 +27,15 @@ def client():
 
 
 def test_assistant_plan_returns_contextual_suggestions(client):
+    signup_response = client.post(
+        "/api/signup",
+        json={"username": "planner", "email": "planner@example.com", "password": "secret123"},
+    )
+    token = signup_response.get_json()["access_token"]
+
     response = client.post(
         "/api/assistant/plan",
+        headers={"Authorization": f"Bearer {token}"},
         json={
             "title": "Pottery Mug Project",
             "description": "Practice wheel throwing",

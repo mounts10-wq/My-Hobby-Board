@@ -43,4 +43,6 @@ class Config:
     SQLALCHEMY_DATABASE_URI = get_database_uri()
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-jwt-secret-key-change-me-32chars")
-    JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
+    # No refresh-token flow yet, so keep sessions long-lived to avoid users
+    # getting silently logged out mid-session on a public-facing hobby app.
+    JWT_ACCESS_TOKEN_EXPIRES = timedelta(days=30)

@@ -6,7 +6,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app import create_app, db
+from app import create_app, db, limiter
 from app.models import Board, BoardUpdate, User
 
 
@@ -18,6 +18,7 @@ def client():
         SQLALCHEMY_DATABASE_URI="sqlite:///:memory:",
         JWT_SECRET_KEY="test-jwt-secret-key-at-least-32-bytes",
     )
+    limiter.reset()
 
     with app.app_context():
         db.create_all()
@@ -34,6 +35,16 @@ def _signup_and_auth(client, username, email, password="secret123"):
     assert response.status_code == 201
     payload = response.get_json()
     return payload["access_token"], payload["user"]["id"]
+
+
+def test_signup_rejects_short_password(client):
+    response = client.post(
+        "/api/signup",
+        json={"username": "shortpw", "email": "shortpw@example.com", "password": "abc123"},
+    )
+
+    assert response.status_code == 400
+    assert "8 characters" in response.get_json()["error"]
 
 
 def test_follow_board_and_feed_include_public_updates(client):

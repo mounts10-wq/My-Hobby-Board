@@ -12,7 +12,7 @@ from flask_jwt_extended import (
     decode_token,
 )
 
-from . import db
+from . import db, limiter
 from .models import User, Board, Task, BoardUpdate, UserFollow, BoardUpdateComment, BoardFollow
 
 api = Blueprint("api", __name__)
@@ -194,6 +194,7 @@ def serve_upload(filename):
 
 
 @api.route("/signup", methods=["POST"])
+@limiter.limit("10 per hour")
 def signup():
     data = request.get_json(silent=True) or {}
 
@@ -203,6 +204,9 @@ def signup():
 
     if not username or not email or not password:
         return jsonify({"error": "Username, email, and password are required"}), 400
+
+    if len(password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters long"}), 400
 
     existing_username = User.query.filter_by(username=username).first()
     if existing_username:
@@ -228,6 +232,7 @@ def signup():
 
 
 @api.route("/login", methods=["POST"])
+@limiter.limit("15 per minute")
 def login():
     data = request.get_json(silent=True) or {}
 
@@ -435,6 +440,8 @@ def delete_board(board_id):
 
 
 @api.route("/assistant/plan", methods=["POST"])
+@jwt_required()
+@limiter.limit("20 per hour")
 def generate_plan_suggestions():
     data = request.get_json() or {}
     title = str(data.get("title", "")).strip()

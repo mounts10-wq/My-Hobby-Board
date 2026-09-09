@@ -28,6 +28,10 @@ export async function apiRequest(endpoint, options = {}) {
     }
 
     if (!response.ok) {
+      if (response.status === 401 && token) {
+        window.dispatchEvent(new CustomEvent("auth:expired"));
+      }
+
       const error = new Error(data.error || data.message || "Something went wrong");
       error.status = response.status;
       throw error;
@@ -75,6 +79,10 @@ export async function apiUploadRequest(endpoint, formData, options = {}) {
     }
 
     if (!response.ok) {
+      if (response.status === 401 && token) {
+        window.dispatchEvent(new CustomEvent("auth:expired"));
+      }
+
       const error = new Error(data.error || data.message || "Something went wrong");
       error.status = response.status;
       throw error;
