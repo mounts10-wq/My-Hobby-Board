@@ -438,7 +438,7 @@ def generate_plan_suggestions():
 
     # 1. Try Google Gemini if configured
     if gemini_key:
-        gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+        gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.6-flash").strip() or "gemini-3.6-flash"
         try:
             import requests
 
@@ -448,12 +448,13 @@ def generate_plan_suggestions():
                 headers={"Content-Type": "application/json"},
                 json={
                     "contents": [{"parts": [{"text": prompt}]}],
+                    # Reasoning models spend part of this budget "thinking" before answering.
                     "generationConfig": {
                         "temperature": 0.7,
-                        "maxOutputTokens": 400,
+                        "maxOutputTokens": 1024,
                     },
                 },
-                timeout=20,
+                timeout=25,
             )
             response.raise_for_status()
             payload = response.json()
