@@ -438,7 +438,7 @@ def generate_plan_suggestions():
 
     # 1. Try Google Gemini if configured
     if gemini_key:
-        gemini_model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash").strip() or "gemini-1.5-flash"
+        gemini_model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
         try:
             import requests
 
