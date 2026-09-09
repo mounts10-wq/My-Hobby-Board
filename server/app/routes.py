@@ -451,10 +451,10 @@ def generate_plan_suggestions():
                     # Reasoning models spend part of this budget "thinking" before answering.
                     "generationConfig": {
                         "temperature": 0.7,
-                        "maxOutputTokens": 1024,
+                        "maxOutputTokens": 2048,
                     },
                 },
-                timeout=25,
+                timeout=30,
             )
             response.raise_for_status()
             payload = response.json()
@@ -467,7 +467,8 @@ def generate_plan_suggestions():
 
             if text:
                 suggestions = normalize_plan_suggestions(parse_suggestions_from_ai_text(text))
-                if suggestions:
+                # Reject truncated responses (e.g. reasoning models cut off before finishing).
+                if len(suggestions) >= 3:
                     return jsonify({"suggestions": suggestions[:4], "source": "gemini"}), 200
             current_app.logger.warning("Gemini returned no usable text: %s", payload)
         except Exception as exc:
@@ -504,7 +505,7 @@ def generate_plan_suggestions():
 
             if text:
                 suggestions = normalize_plan_suggestions(parse_suggestions_from_ai_text(text))
-                if suggestions:
+                if len(suggestions) >= 3:
                     return jsonify({"suggestions": suggestions[:4], "source": "anthropic"}), 200
         except Exception as exc:
             current_app.logger.exception("Anthropic assistant call failed: %s", exc)
