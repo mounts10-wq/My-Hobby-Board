@@ -468,8 +468,9 @@ def generate_plan_suggestions():
                 suggestions = normalize_plan_suggestions(parse_suggestions_from_ai_text(text))
                 if suggestions:
                     return jsonify({"suggestions": suggestions[:4], "source": "gemini"}), 200
-        except Exception:
-            pass
+            current_app.logger.warning("Gemini returned no usable text: %s", payload)
+        except Exception as exc:
+            current_app.logger.exception("Gemini assistant call failed: %s", exc)
 
     # 2. Try Anthropic if configured
     if anthropic_key:
@@ -504,8 +505,8 @@ def generate_plan_suggestions():
                 suggestions = normalize_plan_suggestions(parse_suggestions_from_ai_text(text))
                 if suggestions:
                     return jsonify({"suggestions": suggestions[:4], "source": "anthropic"}), 200
-        except Exception:
-            pass
+        except Exception as exc:
+            current_app.logger.exception("Anthropic assistant call failed: %s", exc)
 
     # 3. Fallback to smart local suggestions if no AI key or AI request fails
     return build_assistant_fallback_response(title, description, materials, notes)
