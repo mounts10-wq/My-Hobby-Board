@@ -28,6 +28,35 @@ def can_view_board(board, viewer_user_id):
     return board.user_id == viewer_user_id or bool(board.is_public)
 
 
+def upload_media_file(media_file):
+    """Store an uploaded file and return its public media_url.
+
+    Uses Cloudinary when configured (persists across deploys); otherwise
+    falls back to local disk, which is fine for local development but is
+    wiped on every deploy/restart on most hosting platforms.
+    """
+    if os.getenv("CLOUDINARY_URL"):
+        import cloudinary.uploader
+
+        result = cloudinary.uploader.upload(media_file, resource_type="auto", folder="myhobbyboard")
+        return result["secure_url"]
+
+    filename = secure_filename(media_file.filename)
+    if not filename:
+        return None
+
+    saved_path = UPLOAD_DIR / filename
+    counter = 1
+    while saved_path.exists():
+        stem = Path(filename).stem
+        suffix = Path(filename).suffix
+        saved_path = UPLOAD_DIR / f"{stem}-{counter}{suffix}"
+        counter += 1
+
+    media_file.save(saved_path)
+    return f"/api/uploads/{saved_path.name}"
+
+
 def build_local_plan_suggestions(title, description, materials, notes):
     context = " ".join([title, description, materials, notes]).lower()
     title_label = title or "this project"
@@ -567,20 +596,14 @@ def create_board_update(board_id):
 
     resolved_media_url = media_url or None
     if media_file and media_file.filename:
-        filename = secure_filename(media_file.filename)
-        if not filename:
+        try:
+            resolved_media_url = upload_media_file(media_file)
+        except Exception as exc:
+            current_app.logger.exception("Media upload failed: %s", exc)
+            return jsonify({"error": "Media upload failed. Please try again."}), 502
+
+        if not resolved_media_url:
             return jsonify({"error": "Invalid file name"}), 400
-
-        saved_path = UPLOAD_DIR / filename
-        counter = 1
-        while saved_path.exists():
-            stem = Path(filename).stem
-            suffix = Path(filename).suffix
-            saved_path = UPLOAD_DIR / f"{stem}-{counter}{suffix}"
-            counter += 1
-
-        media_file.save(saved_path)
-        resolved_media_url = f"/api/uploads/{saved_path.name}"
 
     update = BoardUpdate(
         content=content,
