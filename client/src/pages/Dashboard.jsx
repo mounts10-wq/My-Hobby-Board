@@ -114,7 +114,7 @@ function Dashboard() {
           <p className="feature-kicker">Workspace overview</p>
           <h1>Your boards, progress, and next moves in one place.</h1>
           <p>
-            Welcome, {user?.username}. This view is your control room for active
+            Welcome, {user?.username}. This page is your control room for active
             projects, planning notes, and milestones that need to stay visible.
           </p>
           <p className="dashboard-subcopy">
