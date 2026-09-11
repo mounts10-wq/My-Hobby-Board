@@ -75,7 +75,7 @@ class Board(db.Model):
     is_public = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=utcnow)
 
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
 
     user = db.relationship("User", back_populates="boards")
     tasks = db.relationship(
@@ -119,11 +119,11 @@ class Task(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(120), nullable=False)
     description = db.Column(db.Text, nullable=True)
-    status = db.Column(db.String(50), default="Not Started")
-    priority = db.Column(db.String(50), default="Medium")
+    status = db.Column(db.String(50), default="Not Started", index=True)
+    priority = db.Column(db.String(50), default="Medium", index=True)
     created_at = db.Column(db.DateTime, default=utcnow)
 
-    board_id = db.Column(db.Integer, db.ForeignKey("boards.id"), nullable=False)
+    board_id = db.Column(db.Integer, db.ForeignKey("boards.id"), nullable=False, index=True)
 
     board = db.relationship("Board", back_populates="tasks")
 
@@ -147,8 +147,8 @@ class BoardUpdate(db.Model):
     media_url = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=utcnow)
 
-    board_id = db.Column(db.Integer, db.ForeignKey("boards.id"), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    board_id = db.Column(db.Integer, db.ForeignKey("boards.id"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
 
     board = db.relationship("Board", back_populates="updates")
     user = db.relationship("User", back_populates="board_updates")
@@ -174,8 +174,8 @@ class UserFollow(db.Model):
     __tablename__ = "user_follows"
 
     id = db.Column(db.Integer, primary_key=True)
-    follower_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-    followed_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    follower_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    followed_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
     created_at = db.Column(db.DateTime, default=utcnow)
 
     follower = db.relationship("User", foreign_keys=[follower_user_id], back_populates="following")
@@ -190,8 +190,8 @@ class BoardFollow(db.Model):
     __tablename__ = "board_follows"
 
     id = db.Column(db.Integer, primary_key=True)
-    follower_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
-    board_id = db.Column(db.Integer, db.ForeignKey("boards.id"), nullable=False)
+    follower_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    board_id = db.Column(db.Integer, db.ForeignKey("boards.id"), nullable=False, index=True)
     created_at = db.Column(db.DateTime, default=utcnow)
 
     follower = db.relationship("User", back_populates="followed_boards")
@@ -209,8 +209,8 @@ class BoardUpdateComment(db.Model):
     content = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=utcnow)
 
-    update_id = db.Column(db.Integer, db.ForeignKey("board_updates.id"), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    update_id = db.Column(db.Integer, db.ForeignKey("board_updates.id"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
 
     update = db.relationship("BoardUpdate", back_populates="comments")
     user = db.relationship("User", back_populates="written_update_comments")

@@ -107,6 +107,12 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
+Create the local database (Flask-Migrate manages schema, no more auto-create):
+
+```bash
+flask db upgrade
+```
+
 Start the backend:
 
 ```bash
@@ -128,7 +134,20 @@ npm run dev
 
 Runs at: `http://127.0.0.1:5173`
 
-### 4. Running Verification Tests
+### 4. Database Migrations
+
+Schema changes are tracked with Flask-Migrate/Alembic under `server/migrations/`. After changing a model:
+
+```bash
+cd server
+source venv/bin/activate
+flask db migrate -m "describe the change"
+flask db upgrade
+```
+
+Commit the generated file in `migrations/versions/`. On deploy, the Render start command runs `flask db upgrade` automatically before the app boots, so production schema stays in sync without touching existing data.
+
+### 5. Running Verification Tests
 
 Backend tests:
 ```bash
@@ -162,8 +181,9 @@ The live site runs on this stack:
 2. In [Render Dashboard](https://dashboard.render.com), create a **New Web Service**:
    - **Root Directory:** `server`
    - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** `gunicorn run:app`
+   - **Start Command:** `flask db upgrade && gunicorn --workers 3 --timeout 60 run:app`
 3. Add Environment Variables:
+   - `FLASK_APP`: `run.py` (required for `flask db upgrade` to find the app)
    - `SECRET_KEY`: random 32+ char string
    - `JWT_SECRET_KEY`: random 32+ char string
    - `DATABASE_URL`: your Neon **pooled connection** string (`postgresql://...?sslmode=require`)

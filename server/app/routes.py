@@ -11,6 +11,8 @@ from flask_jwt_extended import (
     get_jwt_identity,
     decode_token,
 )
+from sqlalchemy import case, func
+from sqlalchemy.orm import joinedload
 
 from . import db, limiter
 from .models import User, Board, Task, BoardUpdate, UserFollow, BoardUpdateComment, BoardFollow
@@ -282,12 +284,18 @@ def get_dashboard_stats():
 
     board_count = Board.query.filter_by(user_id=user_id).count()
 
-    user_tasks = Task.query.join(Board).filter(Board.user_id == user_id)
-    total_tasks = user_tasks.count()
-    completed_tasks = user_tasks.filter(Task.status == "Complete").count()
-    in_progress_tasks = user_tasks.filter(Task.status == "In Progress").count()
-    not_started_tasks = user_tasks.filter(Task.status == "Not Started").count()
-    high_priority_tasks = user_tasks.filter(Task.priority == "High").count()
+    # Single aggregated query instead of one COUNT() per stat.
+    totals = db.session.query(
+        func.count(Task.id),
+        func.sum(case((Task.status == "Complete", 1), else_=0)),
+        func.sum(case((Task.status == "In Progress", 1), else_=0)),
+        func.sum(case((Task.status == "Not Started", 1), else_=0)),
+        func.sum(case((Task.priority == "High", 1), else_=0)),
+    ).join(Board).filter(Board.user_id == user_id).one()
+
+    total_tasks, completed_tasks, in_progress_tasks, not_started_tasks, high_priority_tasks = (
+        value or 0 for value in totals
+    )
 
     completion_rate = round((completed_tasks / total_tasks) * 100, 1) if total_tasks else 0
 
@@ -700,7 +708,7 @@ def get_social_feed():
         follower_user_id=user_id
     )
 
-    updates = BoardUpdate.query.join(Board).filter(
+    updates = BoardUpdate.query.options(joinedload(BoardUpdate.board)).join(Board).filter(
         (Board.user_id == user_id)
         | ((Board.id.in_(followed_board_ids)) & (Board.is_public.is_(True)))
     ).order_by(BoardUpdate.created_at.desc()).limit(50).all()
@@ -724,7 +732,7 @@ def get_following_boards():
         follower_user_id=user_id
     )
 
-    boards = Board.query.filter(
+    boards = Board.query.options(joinedload(Board.user)).filter(
         Board.id.in_(followed_board_ids),
         Board.is_public.is_(True)
     ).order_by(Board.created_at.desc()).limit(100).all()
@@ -792,7 +800,9 @@ def discover_boards():
     if not query_text and not hobby_filter:
         return jsonify({"boards": []}), 200
 
-    query = Board.query.filter_by(is_public=True).filter(Board.user_id != user_id)
+    query = Board.query.options(joinedload(Board.user)).filter_by(is_public=True).filter(
+        Board.user_id != user_id
+    )
 
     followed_board_ids = [
         row.board_id for row in BoardFollow.query.filter_by(follower_user_id=user_id).all()

@@ -37,8 +37,7 @@ def create_app():
     from . import models
     from .routes import api
 
-    with app.app_context():
-        db.create_all()
+    # Schema is managed by Flask-Migrate (see `flask db upgrade`), not auto-created here.
 
     app.register_blueprint(api, url_prefix="/api")
 

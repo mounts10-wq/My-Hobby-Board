@@ -13,6 +13,7 @@ function Login() {
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [slowStart, setSlowStart] = useState(false);
 
   function handleChange(event) {
     setFormData({
@@ -25,6 +26,10 @@ function Login() {
     event.preventDefault();
     setError("");
     setLoading(true);
+    setSlowStart(false);
+
+    // Free-tier backend can take ~30-50s to wake up after being idle.
+    const slowStartTimer = setTimeout(() => setSlowStart(true), 4000);
 
     try {
       await login(formData);
@@ -32,6 +37,8 @@ function Login() {
     } catch (err) {
       setError(err.message);
     } finally {
+      clearTimeout(slowStartTimer);
+      setSlowStart(false);
       setLoading(false);
     }
   }
@@ -63,6 +70,12 @@ function Login() {
         </label>
 
         {error && <p className="error-message">{error}</p>}
+        {slowStart && (
+          <p className="loading-message">
+            Still working&hellip; the server can take up to a minute to wake up
+            after sitting idle.
+          </p>
+        )}
 
         <button type="submit" disabled={loading}>
           {loading ? "Logging in..." : "Login"}

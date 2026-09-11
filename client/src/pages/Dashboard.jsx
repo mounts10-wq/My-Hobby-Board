@@ -23,6 +23,7 @@ function Dashboard() {
   });
 
   useEffect(() => {
+    // Fire in parallel so one slow request doesn't stall the other.
     fetchBoards();
     fetchStats();
   }, []);
