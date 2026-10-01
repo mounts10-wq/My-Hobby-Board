@@ -269,7 +269,7 @@ function Community() {
             <div>
               <h2>Find builders worth following</h2>
               <p>
-                Search by hobby, project type, or keywords to discover practical
+                Search by hobby/project type, or keywords to discover practical
                 project boards with useful updates.
               </p>
             </div>
@@ -278,16 +278,16 @@ function Community() {
 
           <form className="discover-form" onSubmit={handleSearch}>
             <label>
-              Search text
+              Search boards
               <input
                 type="text"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Try: guitar, 3D print, model train"
+                placeholder="Try: board title, user name, or keywords "
               />
             </label>
             <label>
-              Hobby type
+              Hobby/Project type
               <select value={hobby} onChange={(event) => setHobby(event.target.value)}>
                 <option value="">All hobby types</option>
                 {HOBBY_TYPES.map((type) => (
@@ -306,7 +306,7 @@ function Community() {
           {discoverError && <p className="error-message">{discoverError}</p>}
 
           {!discoverLoading && !discoverError && discoverBoards.length === 0 ? (
-            <p className="empty-state">Search by project name or hobby to discover boards worth following.</p>
+            <p className="empty-state">Search to discover boards worth following.</p>
           ) : (
             <div className="community-list">
               {discoverBoards.map((board) => (
