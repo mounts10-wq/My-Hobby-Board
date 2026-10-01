@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { HOBBY_TYPES } from "../constants/hobbyTypes";
 
 function BoardCard({ board, onDeleteBoard, onUpdateBoard }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -61,12 +62,14 @@ function BoardCard({ board, onDeleteBoard, onUpdateBoard }) {
 
           <label>
             Project Type
-            <input
-              type="text"
-              name="hobby_type"
-              value={formData.hobby_type}
-              onChange={handleChange}
-            />
+            <select name="hobby_type" value={formData.hobby_type} onChange={handleChange}>
+              <option value="">Select a hobby/project type</option>
+              {HOBBY_TYPES.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
           </label>
 
           <label>

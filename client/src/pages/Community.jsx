@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { apiRequest } from "../services/api";
 import MediaAttachment from "../components/MediaAttachment";
+import { HOBBY_TYPES } from "../constants/hobbyTypes";
 
 function Community() {
   const { user } = useAuth();
@@ -287,12 +288,14 @@ function Community() {
             </label>
             <label>
               Hobby type
-              <input
-                type="text"
-                value={hobby}
-                onChange={(event) => setHobby(event.target.value)}
-                placeholder="Try: Woodworking"
-              />
+              <select value={hobby} onChange={(event) => setHobby(event.target.value)}>
+                <option value="">All hobby types</option>
+                {HOBBY_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <button type="submit" className="secondary-button" disabled={discoverLoading}>

@@ -452,6 +452,7 @@ h3,
 .auth-form input,
 .board-form input,
 .board-form textarea,
+.board-form select,
 .task-form input,
 .task-form textarea,
 .task-form select,
@@ -480,6 +481,7 @@ h3,
 .auth-form input:focus,
 .board-form input:focus,
 .board-form textarea:focus,
+.board-form select:focus,
 .task-form input:focus,
 .task-form textarea:focus,
 .task-form select:focus,
@@ -1399,7 +1401,8 @@ h3,
   color: #40352c;
 }
 
-.discover-form input {
+.discover-form input,
+.discover-form select {
   padding: 0.7rem 0.78rem;
   border: 1px solid #cfbfaf;
   border-radius: 12px;
