@@ -498,7 +498,7 @@ def generate_plan_suggestions():
                         "maxOutputTokens": 2048,
                     },
                 },
-                timeout=30,
+                timeout=(5, 50),
             )
             response.raise_for_status()
             payload = response.json()
