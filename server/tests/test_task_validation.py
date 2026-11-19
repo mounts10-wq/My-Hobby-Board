@@ -11,12 +11,11 @@ from app.models import Board, User
 
 @pytest.fixture
 def client():
-    app = create_app()
-    app.config.update(
-        TESTING=True,
-        SQLALCHEMY_DATABASE_URI="sqlite:///:memory:",
-        JWT_SECRET_KEY="test-jwt-secret-key-at-least-32-bytes",
-    )
+    app = create_app({
+        "TESTING": True,
+        "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
+        "JWT_SECRET_KEY": "test-jwt-secret-key-at-least-32-bytes",
+    })
     limiter.reset()
 
     with app.app_context():
@@ -90,3 +89,49 @@ def test_update_task_rejects_invalid_priority(client):
     payload = update_response.get_json()
     assert payload["error"] == "Invalid task priority"
     assert sorted(payload["allowed_values"]) == ["High", "Low", "Medium"]
+
+
+def test_task_due_date_persists_across_partial_updates_and_can_be_cleared(client):
+    board_id, token = setup_user_board(client)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    create_response = client.post(
+        f"/api/boards/{board_id}/tasks",
+        json={"title": "Order lumber", "due_date": "2027-04-20"},
+        headers=headers,
+    )
+
+    assert create_response.status_code == 201
+    task = create_response.get_json()["task"]
+    assert task["due_date"] == "2027-04-20"
+
+    status_response = client.patch(
+        f"/api/tasks/{task['id']}",
+        json={"status": "In Progress"},
+        headers=headers,
+    )
+
+    assert status_response.status_code == 200
+    assert status_response.get_json()["task"]["due_date"] == "2027-04-20"
+
+    clear_response = client.patch(
+        f"/api/tasks/{task['id']}",
+        json={"due_date": ""},
+        headers=headers,
+    )
+
+    assert clear_response.status_code == 200
+    assert clear_response.get_json()["task"]["due_date"] is None
+
+
+def test_task_due_date_rejects_invalid_date(client):
+    board_id, token = setup_user_board(client)
+
+    response = client.post(
+        f"/api/boards/{board_id}/tasks",
+        json={"title": "Order lumber", "due_date": "not-a-date"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 400
+    assert "due date" in response.get_json()["error"].lower()

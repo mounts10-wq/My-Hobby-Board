@@ -11,12 +11,11 @@ from app.models import Board, User
 
 @pytest.fixture
 def client():
-    app = create_app()
-    app.config.update(
-        TESTING=True,
-        SQLALCHEMY_DATABASE_URI="sqlite:///:memory:",
-        JWT_SECRET_KEY="test-jwt-secret-key-at-least-32-bytes",
-    )
+    app = create_app({
+        "TESTING": True,
+        "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
+        "JWT_SECRET_KEY": "test-jwt-secret-key-at-least-32-bytes",
+    })
     limiter.reset()
 
     with app.app_context():
@@ -59,3 +58,57 @@ def test_board_can_store_plan_details(client):
     data = response.get_json()["board"]
     assert data["materials"] == "Clay, glaze"
     assert data["notes"] == "Need a kiln schedule"
+
+
+def test_board_target_date_can_be_created_updated_and_cleared(client):
+    signup_response = client.post(
+        "/api/signup",
+        json={"username": "dateplanner", "email": "dates@example.com", "password": "secret123"},
+    )
+    token = signup_response.get_json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    create_response = client.post(
+        "/api/boards",
+        json={"title": "Garden Bed", "hobby_type": "Gardening", "target_date": "2027-05-01"},
+        headers=headers,
+    )
+
+    assert create_response.status_code == 201
+    board_id = create_response.get_json()["board"]["id"]
+    assert create_response.get_json()["board"]["target_date"] == "2027-05-01"
+
+    update_response = client.patch(
+        f"/api/boards/{board_id}",
+        json={"target_date": "2027-05-15"},
+        headers=headers,
+    )
+
+    assert update_response.status_code == 200
+    assert update_response.get_json()["board"]["target_date"] == "2027-05-15"
+
+    clear_response = client.patch(
+        f"/api/boards/{board_id}",
+        json={"target_date": ""},
+        headers=headers,
+    )
+
+    assert clear_response.status_code == 200
+    assert clear_response.get_json()["board"]["target_date"] is None
+
+
+def test_board_target_date_rejects_invalid_date(client):
+    signup_response = client.post(
+        "/api/signup",
+        json={"username": "invaliddate", "email": "invaliddate@example.com", "password": "secret123"},
+    )
+    token = signup_response.get_json()["access_token"]
+
+    response = client.post(
+        "/api/boards",
+        json={"title": "Garden Bed", "hobby_type": "Gardening", "target_date": "2027-02-30"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 400
+    assert "target date" in response.get_json()["error"].lower()

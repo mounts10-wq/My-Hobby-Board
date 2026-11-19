@@ -1,6 +1,7 @@
 import json
 import os
 import re
+from datetime import date
 from pathlib import Path
 
 from flask import Blueprint, current_app, jsonify, request, send_from_directory
@@ -15,7 +16,17 @@ from sqlalchemy import case, func
 from sqlalchemy.orm import joinedload
 
 from . import db, limiter
-from .models import User, Board, Task, BoardUpdate, UserFollow, BoardUpdateComment, BoardFollow
+from .models import (
+    User,
+    Board,
+    Task,
+    BoardUpdate,
+    UserFollow,
+    BoardUpdateComment,
+    BoardFollow,
+    BoardFollowNotification,
+    utcnow,
+)
 
 api = Blueprint("api", __name__)
 
@@ -28,6 +39,40 @@ ALLOWED_TASK_PRIORITIES = {"Low", "Medium", "High"}
 
 def can_view_board(board, viewer_user_id):
     return board.user_id == viewer_user_id or bool(board.is_public)
+
+
+def add_board_follower_counts(boards, payloads):
+    board_ids = [board.id for board in boards]
+    if not board_ids:
+        return
+
+    counts = dict(
+        db.session.query(BoardFollow.board_id, func.count(BoardFollow.id))
+        .filter(BoardFollow.board_id.in_(board_ids))
+        .group_by(BoardFollow.board_id)
+        .all()
+    )
+    for board_data in payloads:
+        board_data["follower_count"] = counts.get(board_data["id"], 0)
+
+
+def parse_optional_date(value, label):
+    if value is None or value == "":
+        return None
+
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError as exc:
+        raise ValueError(f"{label} must use YYYY-MM-DD format") from exc
+
+
+def create_board_announcement(board, user_id):
+    return BoardUpdate(
+        content="Started a new public project board.",
+        board_id=board.id,
+        user_id=user_id,
+        is_announcement=True,
+    )
 
 
 def upload_media_file(media_file):
@@ -184,14 +229,6 @@ def serve_upload(filename):
     if not board or not can_view_board(board, user_id):
         return jsonify({"error": "Access denied"}), 403
 
-    if board.user_id != user_id:
-        follow_exists = BoardFollow.query.filter_by(
-            follower_user_id=user_id,
-            board_id=board.id,
-        ).first()
-        if not follow_exists:
-            return jsonify({"error": "Access denied"}), 403
-
     return send_from_directory(UPLOAD_DIR, filename)
 
 
@@ -325,6 +362,7 @@ def get_boards():
         .paginate(page=page, per_page=per_page, error_out=False)
 
     boards = [board.to_dict() for board in paginated_boards.items]
+    add_board_follower_counts(paginated_boards.items, boards)
 
     return jsonify({
         "boards": boards,
@@ -348,6 +386,11 @@ def create_board():
     notes = str(data.get("notes", "")).strip()
     is_public = bool(data.get("is_public", False))
 
+    try:
+        target_date = parse_optional_date(data.get("target_date"), "Target date")
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
     if not title or not hobby_type:
         return jsonify({"error": "Title and hobby type are required"}), 400
 
@@ -357,16 +400,23 @@ def create_board():
         description=description,
         materials=materials,
         notes=notes,
+        target_date=target_date,
         is_public=is_public,
         user_id=user_id
     )
 
     db.session.add(board)
+    if is_public:
+        db.session.flush()
+        db.session.add(create_board_announcement(board, user_id))
     db.session.commit()
+
+    board_data = board.to_dict()
+    board_data["follower_count"] = 0
 
     return jsonify({
         "message": "Board created successfully",
-        "board": board.to_dict()
+        "board": board_data
     }), 201
 
 
@@ -381,6 +431,15 @@ def get_board(board_id):
         return jsonify({"error": "Board not found"}), 404
 
     board_data = board.to_dict(include_tasks=True)
+    board_data["follower_count"] = BoardFollow.query.filter_by(board_id=board.id).count()
+    task_update_counts = dict(
+        db.session.query(BoardUpdate.task_id, func.count(BoardUpdate.id))
+        .filter(BoardUpdate.board_id == board.id, BoardUpdate.task_id.isnot(None))
+        .group_by(BoardUpdate.task_id)
+        .all()
+    )
+    for task_data in board_data["tasks"]:
+        task_data["update_count"] = task_update_counts.get(task_data["id"], 0)
     board_data["is_owner"] = board.user_id == user_id
     board_data["owner_username"] = board.user.username if board.user else None
 
@@ -397,6 +456,7 @@ def update_board(board_id):
     if not board:
         return jsonify({"error": "Board not found"}), 404
 
+    was_public = board.is_public
     data = request.get_json(silent=True) or {}
 
     if "title" in data:
@@ -420,14 +480,25 @@ def update_board(board_id):
     if "notes" in data:
         board.notes = data.get("notes", "").strip()
 
+    if "target_date" in data:
+        try:
+            board.target_date = parse_optional_date(data.get("target_date"), "Target date")
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
     if "is_public" in data:
         board.is_public = bool(data.get("is_public"))
 
+    if not was_public and board.is_public:
+        db.session.add(create_board_announcement(board, user_id))
+
     db.session.commit()
+    board_data = board.to_dict()
+    board_data["follower_count"] = BoardFollow.query.filter_by(board_id=board.id).count()
 
     return jsonify({
         "message": "Board updated successfully",
-        "board": board.to_dict()
+        "board": board_data
     }), 200
 
 
@@ -568,7 +639,7 @@ def get_board_updates(board_id):
     if not board or not can_view_board(board, user_id):
         return jsonify({"error": "Board not found"}), 404
 
-    updates = BoardUpdate.query.filter_by(board_id=board.id) \
+    updates = BoardUpdate.query.options(joinedload(BoardUpdate.task)).filter_by(board_id=board.id) \
         .order_by(BoardUpdate.created_at.desc()) \
         .all()
 
@@ -599,15 +670,28 @@ def create_board_update(board_id):
     if request.content_type and "multipart/form-data" in request.content_type:
         content = str(request.form.get("content", "")).strip()
         media_url = str(request.form.get("media_url", "")).strip()
+        task_id_value = request.form.get("task_id")
         media_file = request.files.get("media_file")
     else:
         data = request.get_json(silent=True) or {}
         content = str(data.get("content", "")).strip()
         media_url = str(data.get("media_url", "")).strip()
+        task_id_value = data.get("task_id")
         media_file = None
 
     if not content:
         return jsonify({"error": "Update content is required"}), 400
+
+    task = None
+    if task_id_value not in (None, ""):
+        try:
+            task_id = int(task_id_value)
+        except (TypeError, ValueError):
+            return jsonify({"error": "Invalid task"}), 400
+
+        task = Task.query.filter_by(id=task_id, board_id=board.id).first()
+        if not task:
+            return jsonify({"error": "Task must belong to this board"}), 400
 
     resolved_media_url = media_url or None
     if media_file and media_file.filename:
@@ -623,6 +707,7 @@ def create_board_update(board_id):
     update = BoardUpdate(
         content=content,
         media_url=resolved_media_url,
+        task=task,
         board_id=board.id,
         user_id=user_id
     )
@@ -708,9 +793,19 @@ def get_social_feed():
         follower_user_id=user_id
     )
 
-    updates = BoardUpdate.query.options(joinedload(BoardUpdate.board)).join(Board).filter(
+    updates = BoardUpdate.query.options(
+        joinedload(BoardUpdate.board),
+        joinedload(BoardUpdate.task),
+    ).join(Board).filter(
         (Board.user_id == user_id)
-        | ((Board.id.in_(followed_board_ids)) & (Board.is_public.is_(True)))
+        | (
+            Board.is_public.is_(True)
+            & (
+                Board.id.in_(followed_board_ids)
+                | BoardUpdate.is_announcement.is_(True)
+                | BoardUpdate.task_id.isnot(None)
+            )
+        )
     ).order_by(BoardUpdate.created_at.desc()).limit(50).all()
 
     payload = []
@@ -742,6 +837,7 @@ def get_following_boards():
         board_data = board.to_dict()
         board_data["owner_username"] = board.user.username if board.user else None
         payload.append(board_data)
+    add_board_follower_counts(boards, payload)
 
     return jsonify({"boards": payload}), 200
 
@@ -767,6 +863,11 @@ def follow_board(board_id):
 
     follow = BoardFollow(follower_user_id=user_id, board_id=board_id)
     db.session.add(follow)
+    db.session.add(BoardFollowNotification(
+        owner_user_id=board.user_id,
+        follower_user_id=user_id,
+        board_id=board.id,
+    ))
     db.session.commit()
 
     return jsonify({"message": "Now following board"}), 201
@@ -788,6 +889,72 @@ def unfollow_board(board_id):
     db.session.commit()
 
     return jsonify({"message": "Unfollowed board"}), 200
+
+
+@api.route("/boards/<int:board_id>/followers", methods=["GET"])
+@jwt_required()
+def get_board_followers(board_id):
+    user_id = int(get_jwt_identity())
+    board = Board.query.filter_by(id=board_id, user_id=user_id).first()
+    if not board:
+        return jsonify({"error": "Board not found"}), 404
+
+    follows = BoardFollow.query.options(joinedload(BoardFollow.follower)).filter_by(
+        board_id=board.id
+    ).order_by(BoardFollow.created_at.desc()).all()
+
+    return jsonify({
+        "followers": [
+            {
+                "id": follow.follower.id,
+                "username": follow.follower.username,
+                "followed_at": follow.created_at.isoformat(),
+            }
+            for follow in follows
+        ]
+    }), 200
+
+
+@api.route("/me/board-follow-notifications", methods=["GET"])
+@jwt_required()
+def get_board_follow_notifications():
+    user_id = int(get_jwt_identity())
+    notifications = BoardFollowNotification.query.options(
+        joinedload(BoardFollowNotification.follower),
+        joinedload(BoardFollowNotification.board),
+    ).filter_by(owner_user_id=user_id, read_at=None).order_by(
+        BoardFollowNotification.created_at.desc()
+    ).limit(10).all()
+
+    return jsonify({
+        "notifications": [
+            {
+                "id": notification.id,
+                "follower_username": notification.follower.username,
+                "board_id": notification.board_id,
+                "board_title": notification.board.title,
+                "created_at": notification.created_at.isoformat(),
+            }
+            for notification in notifications
+        ]
+    }), 200
+
+
+@api.route("/me/board-follow-notifications/<int:notification_id>", methods=["PATCH"])
+@jwt_required()
+def dismiss_board_follow_notification(notification_id):
+    user_id = int(get_jwt_identity())
+    notification = BoardFollowNotification.query.filter_by(
+        id=notification_id,
+        owner_user_id=user_id,
+        read_at=None,
+    ).first()
+    if not notification:
+        return jsonify({"error": "Notification not found"}), 404
+
+    notification.read_at = utcnow()
+    db.session.commit()
+    return jsonify({"message": "Notification dismissed"}), 200
 
 
 @api.route("/discover/boards", methods=["GET"])
@@ -816,6 +983,7 @@ def discover_boards():
             (Board.title.ilike(pattern))
             | (Board.description.ilike(pattern))
             | (Board.notes.ilike(pattern))
+            | Board.user.has(User.username.ilike(pattern))
         )
 
     if hobby_filter:
@@ -829,6 +997,7 @@ def discover_boards():
         board_data = board.to_dict()
         board_data["owner_username"] = board.user.username if board.user else None
         payload.append(board_data)
+    add_board_follower_counts(boards, payload)
 
     return jsonify({"boards": payload}), 200
 
@@ -924,6 +1093,11 @@ def create_task(board_id):
     status = str(data.get("status", "Not Started")).strip()
     priority = str(data.get("priority", "Medium")).strip()
 
+    try:
+        due_date = parse_optional_date(data.get("due_date"), "Due date")
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
     if not title:
         return jsonify({"error": "Task title is required"}), 400
 
@@ -944,6 +1118,7 @@ def create_task(board_id):
         description=description,
         status=status,
         priority=priority,
+        due_date=due_date,
         board_id=board.id
     )
 
@@ -1014,6 +1189,12 @@ def update_task(task_id):
             }), 400
         task.priority = priority
 
+    if "due_date" in data:
+        try:
+            task.due_date = parse_optional_date(data.get("due_date"), "Due date")
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
     db.session.commit()
 
     return jsonify({
@@ -1036,6 +1217,7 @@ def delete_task(task_id):
         return jsonify({"error": "Task not found"}), 404
 
     db.session.delete(task)
+    BoardUpdate.query.filter_by(task_id=task.id).update({BoardUpdate.task_id: None})
     db.session.commit()
 
     return jsonify({"message": "Task deleted successfully"}), 200

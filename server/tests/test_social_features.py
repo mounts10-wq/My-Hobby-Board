@@ -12,12 +12,11 @@ from app.models import Board, BoardUpdate, User
 
 @pytest.fixture
 def client():
-    app = create_app()
-    app.config.update(
-        TESTING=True,
-        SQLALCHEMY_DATABASE_URI="sqlite:///:memory:",
-        JWT_SECRET_KEY="test-jwt-secret-key-at-least-32-bytes",
-    )
+    app = create_app({
+        "TESTING": True,
+        "SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:",
+        "JWT_SECRET_KEY": "test-jwt-secret-key-at-least-32-bytes",
+    })
     limiter.reset()
 
     with app.app_context():
@@ -88,6 +87,179 @@ def test_follow_board_and_feed_include_public_updates(client):
     target = next(update for update in updates if update["content"] == "Seedlings are sprouting!")
     assert target["board_title"] == "Urban Gardening"
     assert target["media_url"] == "https://example.com/video"
+
+
+def test_board_follower_count_and_owner_only_follower_list(client):
+    owner_token, _ = _signup_and_auth(client, "board_owner", "board-owner@example.com")
+    follower_token, _ = _signup_and_auth(client, "board_follower", "board-follower@example.com")
+    board_response = client.post(
+        "/api/boards",
+        json={"title": "Shared Workshop", "hobby_type": "Woodworking", "is_public": True},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    board_id = board_response.get_json()["board"]["id"]
+
+    follow_response = client.post(
+        f"/api/boards/{board_id}/follow",
+        headers={"Authorization": f"Bearer {follower_token}"},
+    )
+    assert follow_response.status_code == 201
+
+    board_details = client.get(
+        f"/api/boards/{board_id}",
+        headers={"Authorization": f"Bearer {follower_token}"},
+    ).get_json()["board"]
+    assert board_details["follower_count"] == 1
+
+    owner_followers_response = client.get(
+        f"/api/boards/{board_id}/followers",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert owner_followers_response.status_code == 200
+    assert owner_followers_response.get_json()["followers"][0]["username"] == "board_follower"
+
+    other_followers_response = client.get(
+        f"/api/boards/{board_id}/followers",
+        headers={"Authorization": f"Bearer {follower_token}"},
+    )
+    assert other_followers_response.status_code == 404
+
+
+def test_follow_creates_owner_notification_that_can_be_dismissed(client):
+    owner_token, _ = _signup_and_auth(client, "notify_owner", "notify-owner@example.com")
+    follower_token, _ = _signup_and_auth(client, "notify_follower", "notify-follower@example.com")
+    board_response = client.post(
+        "/api/boards",
+        json={"title": "Weekend Build", "hobby_type": "Cars", "is_public": True},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    board_id = board_response.get_json()["board"]["id"]
+
+    client.post(
+        f"/api/boards/{board_id}/follow",
+        headers={"Authorization": f"Bearer {follower_token}"},
+    )
+
+    notification_response = client.get(
+        "/api/me/board-follow-notifications",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    notifications = notification_response.get_json()["notifications"]
+    assert len(notifications) == 1
+    assert notifications[0]["follower_username"] == "notify_follower"
+    assert notifications[0]["board_title"] == "Weekend Build"
+
+    dismiss_response = client.patch(
+        f"/api/me/board-follow-notifications/{notifications[0]['id']}",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert dismiss_response.status_code == 200
+
+    remaining = client.get(
+        "/api/me/board-follow-notifications",
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    assert remaining.get_json()["notifications"] == []
+
+
+def test_public_board_announcement_is_in_feed_but_private_board_is_not(client):
+    owner_token, _ = _signup_and_auth(client, "announce_owner", "announce-owner@example.com")
+    viewer_token, _ = _signup_and_auth(client, "announce_viewer", "announce-viewer@example.com")
+
+    public_response = client.post(
+        "/api/boards",
+        json={"title": "Public Workshop", "hobby_type": "Woodworking", "is_public": True},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    private_response = client.post(
+        "/api/boards",
+        json={"title": "Private Workshop", "hobby_type": "Woodworking", "is_public": False},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+
+    assert public_response.status_code == 201
+    assert private_response.status_code == 201
+
+    feed_response = client.get(
+        "/api/feed",
+        headers={"Authorization": f"Bearer {viewer_token}"},
+    )
+
+    announcements = feed_response.get_json()["updates"]
+    assert any(item["board_title"] == "Public Workshop" and item["is_announcement"] for item in announcements)
+    assert not any(item["board_title"] == "Private Workshop" for item in announcements)
+
+
+def test_task_linked_progress_update_includes_task_context_in_feed(client):
+    owner_token, _ = _signup_and_auth(client, "task_owner", "task-owner@example.com")
+    follower_token, _ = _signup_and_auth(client, "task_follower", "task-follower@example.com")
+    headers = {"Authorization": f"Bearer {owner_token}"}
+
+    board_response = client.post(
+        "/api/boards",
+        json={"title": "Workshop Bench", "hobby_type": "Woodworking", "is_public": True},
+        headers=headers,
+    )
+    board_id = board_response.get_json()["board"]["id"]
+    task_response = client.post(
+        f"/api/boards/{board_id}/tasks",
+        json={"title": "Cut the legs"},
+        headers=headers,
+    )
+    task_id = task_response.get_json()["task"]["id"]
+
+    update_response = client.post(
+        f"/api/boards/{board_id}/updates",
+        json={"content": "Legs are cut and ready to assemble.", "task_id": task_id},
+        headers=headers,
+    )
+    assert update_response.status_code == 201
+    assert update_response.get_json()["update"]["task_title"] == "Cut the legs"
+
+    board_details_response = client.get(f"/api/boards/{board_id}", headers=headers)
+    task_payload = next(
+        task for task in board_details_response.get_json()["board"]["tasks"]
+        if task["id"] == task_id
+    )
+    assert task_payload["update_count"] == 1
+
+    feed_response = client.get("/api/feed", headers={"Authorization": f"Bearer {follower_token}"})
+    feed_item = next(
+        item for item in feed_response.get_json()["updates"]
+        if item["content"] == "Legs are cut and ready to assemble."
+    )
+
+    assert feed_item["task_id"] == task_id
+    assert feed_item["task_title"] == "Cut the legs"
+
+
+def test_update_cannot_link_task_from_another_board(client):
+    owner_token, _ = _signup_and_auth(client, "task_validator", "task-validator@example.com")
+    headers = {"Authorization": f"Bearer {owner_token}"}
+    board_ids = []
+
+    for title in ["First Board", "Second Board"]:
+        response = client.post(
+            "/api/boards",
+            json={"title": title, "hobby_type": "Woodworking"},
+            headers=headers,
+        )
+        board_ids.append(response.get_json()["board"]["id"])
+
+    task_response = client.post(
+        f"/api/boards/{board_ids[1]}/tasks",
+        json={"title": "Other board task"},
+        headers=headers,
+    )
+    task_id = task_response.get_json()["task"]["id"]
+
+    response = client.post(
+        f"/api/boards/{board_ids[0]}/updates",
+        json={"content": "This should be rejected.", "task_id": task_id},
+        headers=headers,
+    )
+
+    assert response.status_code == 400
 
 
 def test_following_one_board_does_not_follow_all_user_boards(client):
@@ -213,7 +385,37 @@ def test_discover_boards_filters_public_results(client):
     assert boards[0]["owner_username"] == "maker"
 
 
-def test_uploaded_media_is_only_accessible_to_owner_or_followers(client):
+def test_discover_search_matches_partial_owner_name_across_public_boards(client):
+    owner_token, _ = _signup_and_auth(client, "alexbuilds", "alexbuilds@example.com")
+    viewer_token, _ = _signup_and_auth(client, "searcher", "searcher@example.com")
+    public_board_ids = []
+
+    for title, is_public in [
+        ("Old Truck", True),
+        ("Workbench", True),
+        ("Private Engine Notes", False),
+    ]:
+        response = client.post(
+            "/api/boards",
+            json={"title": title, "hobby_type": "Cars", "is_public": is_public},
+            headers={"Authorization": f"Bearer {owner_token}"},
+        )
+        assert response.status_code == 201
+        if is_public:
+            public_board_ids.append(response.get_json()["board"]["id"])
+
+    response = client.get(
+        "/api/discover/boards?q=alexb",
+        headers={"Authorization": f"Bearer {viewer_token}"},
+    )
+
+    assert response.status_code == 200
+    boards = response.get_json()["boards"]
+    assert {board["id"] for board in boards} == set(public_board_ids)
+    assert all(board["owner_username"] == "alexbuilds" for board in boards)
+
+
+def test_uploaded_media_is_accessible_to_signed_in_viewers_of_public_boards(client):
     owner_token, _ = _signup_and_auth(client, "owner", "owner@example.com")
     follower_token, _ = _signup_and_auth(client, "follower", "follower@example.com")
     viewer_token, _ = _signup_and_auth(client, "viewer", "viewer@example.com")
@@ -257,6 +459,11 @@ def test_uploaded_media_is_only_accessible_to_owner_or_followers(client):
         headers={"Authorization": f"Bearer {viewer_token}"},
     )
     assert viewer_media_response.status_code == 403
+
+    public_viewer_media_response = client.get(
+        f"/api/uploads/{filename}?token={viewer_token}",
+    )
+    assert public_viewer_media_response.status_code == 200
 
 
 def test_uploading_media_file_to_board_update_saves_attachment(client):

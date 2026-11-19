@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-from app import create_app
+from app import create_app, db
 
 
 def test_database_uri_uses_instance_directory():
@@ -18,3 +18,10 @@ def test_relative_database_url_uses_instance_directory(monkeypatch):
     expected_db = Path(__file__).resolve().parents[1] / "instance" / "myhobbyboard.db"
 
     assert app.config["SQLALCHEMY_DATABASE_URI"] == f"sqlite:///{expected_db}"
+
+
+def test_config_override_is_applied_before_database_engine_initialization():
+    app = create_app({"SQLALCHEMY_DATABASE_URI": "sqlite:///:memory:"})
+
+    with app.app_context():
+        assert str(db.engine.url) == "sqlite:///:memory:"

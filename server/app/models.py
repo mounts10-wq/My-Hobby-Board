@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from werkzeug.security import generate_password_hash, check_password_hash
 from . import db
 
@@ -72,6 +72,7 @@ class Board(db.Model):
     description = db.Column(db.Text, nullable=True)
     materials = db.Column(db.Text, nullable=True)
     notes = db.Column(db.Text, nullable=True)
+    target_date = db.Column(db.Date, nullable=True)
     is_public = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=utcnow)
 
@@ -102,6 +103,7 @@ class Board(db.Model):
             "description": self.description,
             "materials": self.materials,
             "notes": self.notes,
+            "target_date": self.target_date.isoformat() if self.target_date else None,
             "is_public": self.is_public,
             "created_at": self.created_at.isoformat(),
             "user_id": self.user_id
@@ -121,6 +123,7 @@ class Task(db.Model):
     description = db.Column(db.Text, nullable=True)
     status = db.Column(db.String(50), default="Not Started", index=True)
     priority = db.Column(db.String(50), default="Medium", index=True)
+    due_date = db.Column(db.Date, nullable=True)
     created_at = db.Column(db.DateTime, default=utcnow)
 
     board_id = db.Column(db.Integer, db.ForeignKey("boards.id"), nullable=False, index=True)
@@ -134,6 +137,7 @@ class Task(db.Model):
             "description": self.description,
             "status": self.status,
             "priority": self.priority,
+            "due_date": self.due_date.isoformat() if self.due_date else None,
             "created_at": self.created_at.isoformat(),
             "board_id": self.board_id
         }
@@ -145,12 +149,15 @@ class BoardUpdate(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     content = db.Column(db.Text, nullable=False)
     media_url = db.Column(db.Text, nullable=True)
+    task_id = db.Column(db.Integer, db.ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True, index=True)
+    is_announcement = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     created_at = db.Column(db.DateTime, default=utcnow)
 
     board_id = db.Column(db.Integer, db.ForeignKey("boards.id"), nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
 
     board = db.relationship("Board", back_populates="updates")
+    task = db.relationship("Task")
     user = db.relationship("User", back_populates="board_updates")
     comments = db.relationship(
         "BoardUpdateComment",
@@ -166,6 +173,9 @@ class BoardUpdate(db.Model):
             "created_at": self.created_at.isoformat(),
             "board_id": self.board_id,
             "user_id": self.user_id,
+            "task_id": self.task_id,
+            "task_title": self.task.title if self.task else None,
+            "is_announcement": self.is_announcement,
             "username": self.user.username if self.user else None,
         }
 
@@ -200,6 +210,20 @@ class BoardFollow(db.Model):
     __table_args__ = (
         db.UniqueConstraint("follower_user_id", "board_id", name="uq_board_follow_pair"),
     )
+
+
+class BoardFollowNotification(db.Model):
+    __tablename__ = "board_follow_notifications"
+
+    id = db.Column(db.Integer, primary_key=True)
+    owner_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    follower_user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    board_id = db.Column(db.Integer, db.ForeignKey("boards.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    read_at = db.Column(db.DateTime, nullable=True)
+
+    follower = db.relationship("User", foreign_keys=[follower_user_id])
+    board = db.relationship("Board")
 
 
 class BoardUpdateComment(db.Model):

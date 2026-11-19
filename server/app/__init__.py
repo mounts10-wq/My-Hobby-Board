@@ -14,9 +14,11 @@ jwt = JWTManager()
 limiter = Limiter(key_func=get_remote_address, default_limits=["200 per hour"])
 
 
-def create_app():
+def create_app(config_override=None):
     app = Flask(__name__)
     app.config.from_object(Config)
+    if config_override:
+        app.config.update(config_override)
 
     @app.route("/")
     def root():
