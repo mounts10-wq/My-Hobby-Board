@@ -6,6 +6,7 @@ function TaskForm({ onCreateTask }) {
     description: "",
     status: "Not Started",
     priority: "Medium",
+    due_date: "",
   });
 
   const [error, setError] = useState("");
@@ -43,6 +44,7 @@ function TaskForm({ onCreateTask }) {
         description: "",
         status: "Not Started",
         priority: "Medium",
+        due_date: "",
       });
       setSuccess("Task added successfully.");
     } catch (err) {
@@ -100,6 +102,16 @@ function TaskForm({ onCreateTask }) {
           <option value="Medium">Medium</option>
           <option value="High">High</option>
         </select>
+      </label>
+
+      <label>
+        Due date (optional)
+        <input
+          type="date"
+          name="due_date"
+          value={formData.due_date}
+          onChange={handleChange}
+        />
       </label>
 
       {error && <p className="error-message">{error}</p>}

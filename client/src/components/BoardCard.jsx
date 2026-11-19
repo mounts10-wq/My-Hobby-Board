@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { HOBBY_TYPES } from "../constants/hobbyTypes";
+import { formatDate } from "../dateUtils";
 
 function BoardCard({ board, onDeleteBoard, onUpdateBoard }) {
   const [isEditing, setIsEditing] = useState(false);
@@ -17,6 +18,7 @@ function BoardCard({ board, onDeleteBoard, onUpdateBoard }) {
     description: board.description || "",
     materials: board.materials || "",
     notes: board.notes || "",
+    target_date: board.target_date || "",
     is_public: Boolean(board.is_public),
   });
 
@@ -99,6 +101,16 @@ function BoardCard({ board, onDeleteBoard, onUpdateBoard }) {
             />
           </label>
 
+          <label>
+            Target completion date (optional)
+            <input
+              type="date"
+              name="target_date"
+              value={formData.target_date}
+              onChange={handleChange}
+            />
+          </label>
+
           <label className="checkbox-field">
             <input
               type="checkbox"
@@ -139,6 +151,14 @@ function BoardCard({ board, onDeleteBoard, onUpdateBoard }) {
         <p className={board.is_public ? "visibility-pill public" : "visibility-pill private"}>
           {board.is_public ? "Public board" : "Private board"}
         </p>
+        {board.is_public && (
+          <span className="count-pill board-follower-count">
+            {board.follower_count || 0} followers
+          </span>
+        )}
+        {board.target_date && (
+          <p className="board-preview">Target completion: {formatDate(board.target_date)}</p>
+        )}
         {hobbyTags.length > 0 && (
           <div className="hobby-tag-row">
             {hobbyTags.map((tag) => (

@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { formatDate, isPastDate } from "../dateUtils";
 
-function TaskCard({ task, onUpdateTask, onDeleteTask, canManage = true }) {
+function TaskCard({ task, onUpdateTask, onDeleteTask, onViewUpdates, canManage = true }) {
   const [isEditing, setIsEditing] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -8,6 +9,7 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, canManage = true }) {
     description: task.description || "",
     status: task.status,
     priority: task.priority,
+    due_date: task.due_date || "",
   });
 
   const [error, setError] = useState("");
@@ -105,6 +107,16 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, canManage = true }) {
             </select>
           </label>
 
+          <label>
+            Due date (optional)
+            <input
+              type="date"
+              name="due_date"
+              value={formData.due_date}
+              onChange={handleChange}
+            />
+          </label>
+
           {error && <p className="error-message">{error}</p>}
 
           <div className="board-card-actions">
@@ -138,8 +150,22 @@ function TaskCard({ task, onUpdateTask, onDeleteTask, canManage = true }) {
           <span className={`task-badge ${statusClassMap[task.status] || "status-not-started"}`}>
             {task.status}
           </span>
+          {task.due_date && (
+            <span className={`task-badge deadline-badge ${task.status !== "Complete" && isPastDate(task.due_date) ? "overdue" : ""}`}>
+              {task.status !== "Complete" && isPastDate(task.due_date) ? "Overdue" : "Due"}: {formatDate(task.due_date)}
+            </span>
+          )}
         </div>
         <p>{task.description || "No description added."}</p>
+        {task.update_count > 0 && (
+          <button
+            type="button"
+            className="secondary-button task-updates-link"
+            onClick={() => onViewUpdates?.(task.id)}
+          >
+            View {task.update_count} task updates
+          </button>
+        )}
 
         {canManage && (
           <div className="task-controls">

@@ -8,6 +8,7 @@ function BoardForm({ onCreateBoard }) {
     description: "",
     materials: "",
     notes: "",
+    target_date: "",
     is_public: false,
   });
 
@@ -47,6 +48,7 @@ function BoardForm({ onCreateBoard }) {
         description: "",
         materials: "",
         notes: "",
+        target_date: "",
         is_public: false,
       });
       setSuccess("Board created. You can add tasks from the board details page.");
@@ -85,6 +87,16 @@ function BoardForm({ onCreateBoard }) {
             </option>
           ))}
         </select>
+      </label>
+
+      <label>
+        Target completion date (optional)
+        <input
+          type="date"
+          name="target_date"
+          value={formData.target_date}
+          onChange={handleChange}
+        />
       </label>
 
       <label>

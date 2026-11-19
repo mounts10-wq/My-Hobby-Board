@@ -1,18 +1,34 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest, apiUploadRequest } from "../services/api";
 import MediaAttachment from "./MediaAttachment";
+import UpdateComments from "./UpdateComments";
 
-function BoardUpdates({ boardId, canManage = false }) {
+function BoardUpdates({
+  boardId,
+  tasks = [],
+  selectedTaskId = null,
+  onClearTaskFilter,
+  onUpdateCreated,
+  onUpdateDeleted,
+  canManage = false,
+}) {
   const [updates, setUpdates] = useState([]);
   const [content, setContent] = useState("");
+  const [taskId, setTaskId] = useState("");
   const [mediaFile, setMediaFile] = useState(null);
   const [mediaFileName, setMediaFileName] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [commentsByUpdateId, setCommentsByUpdateId] = useState({});
-  const [commentDrafts, setCommentDrafts] = useState({});
-  const [commentLoadingByUpdateId, setCommentLoadingByUpdateId] = useState({});
+  const [showAllActivity, setShowAllActivity] = useState(false);
+
+  const visibleUpdates = selectedTaskId
+    ? updates.filter((update) => update.task_id === Number(selectedTaskId))
+    : updates;
+  const displayedUpdates = showAllActivity || selectedTaskId
+    ? visibleUpdates
+    : visibleUpdates.slice(0, 3);
+  const selectedTask = tasks.find((task) => task.id === Number(selectedTaskId));
 
   const fetchUpdates = useCallback(async () => {
     setLoading(true);
@@ -51,18 +67,23 @@ function BoardUpdates({ boardId, canManage = false }) {
       if (mediaFile) {
         const formData = new FormData();
         formData.append("content", content);
+        if (taskId) {
+          formData.append("task_id", taskId);
+        }
         formData.append("media_file", mediaFile);
 
         data = await apiUploadRequest(`/boards/${boardId}/updates`, formData);
       } else {
         data = await apiRequest(`/boards/${boardId}/updates`, {
           method: "POST",
-          body: JSON.stringify({ content }),
+          body: JSON.stringify({ content, task_id: taskId || null }),
         });
       }
 
       setUpdates([data.update, ...updates]);
+      onUpdateCreated?.(data.update);
       setContent("");
+      setTaskId("");
       setMediaFile(null);
       setMediaFileName("");
     } catch (err) {
@@ -84,64 +105,41 @@ function BoardUpdates({ boardId, canManage = false }) {
         method: "DELETE",
       });
 
+      onUpdateDeleted?.(updates.find((update) => update.id === updateId));
       setUpdates(updates.filter((update) => update.id !== updateId));
     } catch (err) {
       setError(err.message);
     }
   }
 
-  async function toggleComments(updateId) {
-    if (commentsByUpdateId[updateId]) {
-      setCommentsByUpdateId((current) => {
-        const next = { ...current };
-        delete next[updateId];
-        return next;
-      });
-      return;
-    }
-
-    setCommentLoadingByUpdateId((current) => ({ ...current, [updateId]: true }));
-
-    try {
-      const data = await apiRequest(`/updates/${updateId}/comments`);
-      setCommentsByUpdateId((current) => ({ ...current, [updateId]: data.comments || [] }));
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setCommentLoadingByUpdateId((current) => ({ ...current, [updateId]: false }));
-    }
-  }
-
-  async function handlePostComment(updateId) {
-    const draft = (commentDrafts[updateId] || "").trim();
-    if (!draft) {
-      return;
-    }
-
-    try {
-      const data = await apiRequest(`/updates/${updateId}/comments`, {
-        method: "POST",
-        body: JSON.stringify({ content: draft }),
-      });
-
-      setCommentsByUpdateId((current) => ({
-        ...current,
-        [updateId]: [...(current[updateId] || []), data.comment],
-      }));
-      setCommentDrafts((current) => ({ ...current, [updateId]: "" }));
-    } catch (err) {
-      setError(err.message);
-    }
-  }
-
   return (
-    <section className="update-section">
+    <section className="update-section" id="board-progress-updates">
       <div className="task-section-header">
-        <h2>Project Updates</h2>
+        <h2>Progress &amp; Discussion</h2>
+        {selectedTaskId && (
+          <div className="activity-filter-actions">
+            <span className="count-pill">Task: {selectedTask?.title || "Selected task"}</span>
+            <button type="button" className="cancel-button" onClick={onClearTaskFilter}>
+              Clear filter
+            </button>
+          </div>
+        )}
       </div>
 
       {canManage ? (
       <form className="update-form" onSubmit={handleSubmit}>
+        <label>
+          Related task (optional)
+          <select value={taskId} onChange={(event) => setTaskId(event.target.value)}>
+            <option value="">Whole board</option>
+            {tasks.map((task) => (
+              <option key={task.id} value={task.id}>
+                {task.title}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <label>
           Share a photo or video
           <input
@@ -175,88 +173,56 @@ function BoardUpdates({ boardId, canManage = false }) {
 
       {loading ? (
         <p className="loading-message">Loading updates...</p>
-      ) : updates.length === 0 ? (
-        <p className="empty-state">No updates yet. Share the first milestone for this board.</p>
+      ) : visibleUpdates.length === 0 ? (
+        <p className="empty-state">
+          {selectedTaskId
+            ? "No progress posts for this task yet."
+            : "No updates yet. Share the first milestone for this board."}
+        </p>
       ) : (
-        <div className="update-list">
-          {updates.map((update) => (
-            <article className="update-card" key={update.id}>
-              <div className="update-card-header">
-                <div>
-                  <p className="update-author">{update.username || "You"}</p>
-                  <p className="update-meta">
-                    {new Date(update.created_at).toLocaleString()}
-                  </p>
+        <>
+          <div className="update-list">
+            {displayedUpdates.map((update) => (
+              <article className="update-card" key={update.id}>
+                <div className="update-card-header">
+                  <div>
+                    <p className="update-author">{update.username || "You"}</p>
+                    <p className="update-meta">
+                      {new Date(update.created_at).toLocaleString()}
+                    </p>
+                  </div>
+
+                  {canManage && (
+                    <button
+                      type="button"
+                      className="danger-button"
+                      onClick={() => handleDelete(update.id)}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </div>
 
-                {canManage && (
-                  <button
-                    type="button"
-                    className="danger-button"
-                    onClick={() => handleDelete(update.id)}
-                  >
-                    Delete
-                  </button>
-                )}
-              </div>
+                {update.is_announcement && <p className="activity-context">New public board</p>}
+                {update.task_title && <p className="activity-context">Task: {update.task_title}</p>}
+                <p className="update-content">{update.content}</p>
 
-              <p className="update-content">{update.content}</p>
+                {update.media_url && <MediaAttachment url={update.media_url} />}
+                <UpdateComments updateId={update.id} />
+              </article>
+            ))}
+          </div>
 
-              {update.media_url && <MediaAttachment url={update.media_url} />}
-
-              <div className="update-comments">
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => toggleComments(update.id)}
-                >
-                  {commentsByUpdateId[update.id] ? "Hide comments" : "Show comments"}
-                </button>
-
-                {commentLoadingByUpdateId[update.id] && (
-                  <p className="loading-message">Loading comments...</p>
-                )}
-
-                {commentsByUpdateId[update.id] && (
-                  <div className="update-comment-thread">
-                    {(commentsByUpdateId[update.id] || []).length === 0 ? (
-                      <p className="empty-state">No comments yet. Start the discussion.</p>
-                    ) : (
-                      <ul className="comment-list">
-                        {(commentsByUpdateId[update.id] || []).map((comment) => (
-                          <li key={comment.id}>
-                            <strong>{comment.username || "User"}:</strong> {comment.content}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-
-                    <div className="comment-input-row">
-                      <input
-                        type="text"
-                        value={commentDrafts[update.id] || ""}
-                        onChange={(event) =>
-                          setCommentDrafts((current) => ({
-                            ...current,
-                            [update.id]: event.target.value,
-                          }))
-                        }
-                        placeholder="Add advice or feedback..."
-                      />
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={() => handlePostComment(update.id)}
-                      >
-                        Comment
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </article>
-          ))}
-        </div>
+          {!selectedTaskId && visibleUpdates.length > 3 && (
+            <button
+              type="button"
+              className="secondary-button activity-list-toggle"
+              onClick={() => setShowAllActivity((showingAll) => !showingAll)}
+            >
+              {showAllActivity ? "Show recent only" : `View all activity (${visibleUpdates.length})`}
+            </button>
+          )}
+        </>
       )}
     </section>
   );

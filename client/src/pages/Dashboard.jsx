@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { apiRequest } from "../services/api";
 import BoardForm from "../components/BoardForm";
@@ -12,6 +13,7 @@ function Dashboard() {
   const [error, setError] = useState("");
   const [statsLoading, setStatsLoading] = useState(true);
   const [notice, setNotice] = useState("");
+  const [followNotifications, setFollowNotifications] = useState([]);
   const [stats, setStats] = useState({
     board_count: 0,
     task_count: 0,
@@ -26,7 +28,26 @@ function Dashboard() {
     // Fire in parallel so one slow request doesn't stall the other.
     fetchBoards();
     fetchStats();
+    fetchFollowNotifications();
   }, []);
+
+  async function fetchFollowNotifications() {
+    try {
+      const data = await apiRequest("/me/board-follow-notifications");
+      setFollowNotifications(data.notifications || []);
+    } catch {
+      setFollowNotifications([]);
+    }
+  }
+
+  async function dismissFollowNotification(notificationId) {
+    try {
+      await apiRequest(`/me/board-follow-notifications/${notificationId}`, { method: "PATCH" });
+      setFollowNotifications((current) => current.filter((item) => item.id !== notificationId));
+    } catch (requestError) {
+      setError(requestError.message);
+    }
+  }
 
   async function fetchBoards() {
     setLoading(true);
@@ -124,6 +145,34 @@ function Dashboard() {
           </p>
         </div>
       </div>
+
+      {followNotifications.length > 0 && (
+        <section className="follow-notification-panel" aria-live="polite">
+          <div className="follow-notification-header">
+            <h2>New board followers</h2>
+            <span className="count-pill">{followNotifications.length} new</span>
+          </div>
+          <ul className="follow-notification-list">
+            {followNotifications.map((notification) => (
+              <li key={notification.id}>
+                <p>
+                  <strong>{notification.follower_username}</strong> followed your board{" "}
+                  <Link to={`/boards/${notification.board_id}`}>{notification.board_title}</Link>.
+                </p>
+                <time>{new Date(notification.created_at).toLocaleString()}</time>
+                <button
+                  type="button"
+                  className="cancel-button"
+                  onClick={() => dismissFollowNotification(notification.id)}
+                  aria-label={`Dismiss notification that ${notification.follower_username} followed ${notification.board_title}`}
+                >
+                  Dismiss
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="dashboard-workspace">
         <div className="dashboard-workspace-primary">

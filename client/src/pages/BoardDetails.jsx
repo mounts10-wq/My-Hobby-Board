@@ -5,12 +5,18 @@ import TaskForm from "../components/TaskForm";
 import TaskCard from "../components/TaskCard";
 import BoardUpdates from "../components/BoardUpdates";
 import PlanningAssistant from "../components/PlanningAssistant";
+import { formatDate } from "../dateUtils";
 
 function BoardDetails() {
   const { boardId } = useParams();
 
   const [board, setBoard] = useState(null);
   const [tasks, setTasks] = useState([]);
+  const [selectedTaskId, setSelectedTaskId] = useState(null);
+  const [followers, setFollowers] = useState([]);
+  const [showFollowers, setShowFollowers] = useState(false);
+  const [followersLoading, setFollowersLoading] = useState(false);
+  const [followersError, setFollowersError] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const canManageBoard = Boolean(board?.is_owner);
@@ -85,6 +91,43 @@ function BoardDetails() {
     }
   }
 
+  function handleTaskUpdateCount(update, change) {
+    if (!update?.task_id) {
+      return;
+    }
+
+    setTasks((currentTasks) => currentTasks.map((task) => (
+      task.id === update.task_id
+        ? { ...task, update_count: Math.max(0, (task.update_count || 0) + change) }
+        : task
+    )));
+  }
+
+  function handleViewTaskUpdates(taskId) {
+    setSelectedTaskId(taskId);
+    document.getElementById("board-progress-updates")?.scrollIntoView({ behavior: "smooth" });
+  }
+
+  async function handleToggleFollowers() {
+    setFollowersError("");
+    if (showFollowers) {
+      setShowFollowers(false);
+      return;
+    }
+
+    setFollowersLoading(true);
+    try {
+      const data = await apiRequest(`/boards/${boardId}/followers`);
+      setFollowers(data.followers || []);
+      setShowFollowers(true);
+    } catch (requestError) {
+      setFollowersError(requestError.message);
+      setShowFollowers(true);
+    } finally {
+      setFollowersLoading(false);
+    }
+  }
+
   if (loading) {
     return <p className="loading-message">Loading board...</p>;
   }
@@ -116,8 +159,49 @@ function BoardDetails() {
           <span className="owner-pill">Owner: {board.owner_username || "Unknown"}</span>
           <span className="count-pill">{tasks.length} tasks</span>
           <span className="count-pill">{progressPercent}% complete</span>
+          {board.is_public && (
+            canManageBoard ? (
+              <button
+                type="button"
+                className="count-pill follower-count-button"
+                onClick={handleToggleFollowers}
+                aria-expanded={showFollowers}
+                aria-controls="board-followers-list"
+              >
+                {followersLoading ? "Loading followers..." : `${board.follower_count || 0} followers`}
+              </button>
+            ) : (
+              <span className="count-pill">{board.follower_count || 0} followers</span>
+            )
+          )}
+          {board.target_date && (
+            <span className="count-pill">Target: {formatDate(board.target_date)}</span>
+          )}
         </div>
         <p className="board-description">{board.description || "No description added yet."}</p>
+        {canManageBoard && showFollowers && (
+          <div className="board-followers-panel" id="board-followers-list">
+            <div className="task-section-header">
+              <h2>Followers</h2>
+              <button type="button" className="cancel-button" onClick={handleToggleFollowers}>
+                Close
+              </button>
+            </div>
+            {followersError && <p className="error-message">{followersError}</p>}
+            {followers.length === 0 ? (
+              <p className="empty-state">No one follows this board yet.</p>
+            ) : (
+              <ul className="board-follower-list">
+                {followers.map((follower) => (
+                  <li key={follower.id}>
+                    <span>{follower.username}</span>
+                    <time>{new Date(follower.followed_at).toLocaleDateString()}</time>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
 
       <section className="board-workspace">
@@ -155,7 +239,15 @@ function BoardDetails() {
         </div>
 
         <div className="board-workspace-secondary">
-          <BoardUpdates boardId={boardId} canManage={canManageBoard} />
+          <BoardUpdates
+            boardId={boardId}
+            tasks={tasks}
+            selectedTaskId={selectedTaskId}
+            onClearTaskFilter={() => setSelectedTaskId(null)}
+            onUpdateCreated={(update) => handleTaskUpdateCount(update, 1)}
+            onUpdateDeleted={(update) => handleTaskUpdateCount(update, -1)}
+            canManage={canManageBoard}
+          />
         </div>
       </section>
 
@@ -175,6 +267,7 @@ function BoardDetails() {
                 task={task}
                 onUpdateTask={handleUpdateTask}
                 onDeleteTask={handleDeleteTask}
+                onViewUpdates={handleViewTaskUpdates}
                 canManage={canManageBoard}
               />
             ))}

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { apiRequest } from "../services/api";
 import MediaAttachment from "../components/MediaAttachment";
+import UpdateComments from "../components/UpdateComments";
 import { HOBBY_TYPES } from "../constants/hobbyTypes";
 
 function Community() {
@@ -92,6 +93,11 @@ function Community() {
     try {
       await apiRequest(`/boards/${boardId}/follow`, { method: "POST" });
       setFollowingBoardIds((current) => new Set([...current, boardId]));
+      setDiscoverBoards((current) => current.map((board) => (
+        board.id === boardId
+          ? { ...board, follower_count: (board.follower_count || 0) + 1 }
+          : board
+      )));
       setNotice("Following board.");
       fetchFeed();
       fetchFollowingBoards();
@@ -110,9 +116,15 @@ function Community() {
         next.delete(boardId);
         return next;
       });
+      setDiscoverBoards((current) => current.map((board) => (
+        board.id === boardId
+          ? { ...board, follower_count: Math.max(0, (board.follower_count || 0) - 1) }
+          : board
+      )));
       setNotice("Unfollowed board.");
       fetchFeed();
       fetchFollowingBoards();
+      fetchDiscoverBoards();
     } catch (error) {
       setNotice(error.message);
     }
@@ -167,12 +179,16 @@ function Community() {
                 )}
               </div>
 
+              {update.is_announcement && <p className="activity-context">New public board</p>}
+              {update.task_title && <p className="activity-context">Task: {update.task_title}</p>}
               <p className="update-content">{update.content}</p>
 
               {update.media_url && <MediaAttachment url={update.media_url} />}
 
+              <UpdateComments updateId={update.id} />
+
               {update.board_id && (
-                <div className="community-card-actions">
+                <div className="community-card-actions feed-card-actions">
                   <Link to={`/boards/${update.board_id}`} className="view-button">
                     Open board
                   </Link>
@@ -252,10 +268,20 @@ function Community() {
         ) : (
           <div className="followed-board-chips">
             {followingBoards.map((board) => (
-              <Link key={`followed-${board.id}`} to={`/boards/${board.id}`} className="followed-board-chip">
-                {board.title}
-                <span>{board.owner_username || "Community member"}</span>
-              </Link>
+              <div key={`followed-${board.id}`} className="followed-board-item">
+                <Link to={`/boards/${board.id}`} className="followed-board-chip">
+                  {board.title}
+                  <span>{board.owner_username || "Community member"}</span>
+                </Link>
+                <button
+                  type="button"
+                  className="cancel-button followed-board-unfollow"
+                  onClick={() => handleUnfollowBoard(board.id)}
+                  aria-label={`Unfollow ${board.title}`}
+                >
+                  Unfollow
+                </button>
+              </div>
             ))}
           </div>
         )}
@@ -317,6 +343,9 @@ function Community() {
                       <p className="update-meta">
                         {board.hobby_type} • by {board.owner_username || "Community member"}
                       </p>
+                      <span className="count-pill board-follower-count">
+                        {board.follower_count || 0} followers
+                      </span>
                     </div>
                     <div className="community-card-actions">
                       {board.user_id !== user?.id && (
